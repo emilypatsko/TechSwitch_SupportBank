@@ -7,14 +7,38 @@ namespace SupportBank
 {
     class Program
     {
+        private enum CommandType
+        {
+            ListAll,
+            ListOne
+        }
+
+        private struct Command
+        {
+            public CommandType Type { get; set; }
+            public string Account { get; set; }
+        }
+
         static void Main()
         {
             var transactions = ReadCsvFile(@"Transactions2014.csv");
-            var accounts = CreateAccountsFromTransactions(transactions);
-            
-            ListAllAccounts(accounts);
+            var accounts = CreateAccountsFromTransactions(transactions);
+
+            PrintWelcomeScreen();
+            var command = PromptForCommand();
+            Console.WriteLine();
+
+            switch (command.Type)
+            {
+                case CommandType.ListAll:
+                    ListAllAccounts(accounts);
+                    break;
+                case CommandType.ListOne:
+                    ListOneAccount(accounts[command.Account]);
+                    break;
+            }
         }
-        
+
         private static IEnumerable<Transaction> ReadCsvFile(string filename)
         {
             var lines = File.ReadAllLines(filename).Skip(1);
@@ -32,8 +56,8 @@ namespace SupportBank
                     Amount = decimal.Parse(fields[4])
                 };
             }
-        }       
-    
+        }
+
         private static Dictionary<string, Account> CreateAccountsFromTransactions(IEnumerable<Transaction> transactions)
         {
             var accounts = new Dictionary<string, Account>();
@@ -58,7 +82,59 @@ namespace SupportBank
             accounts[name] = newAccount;
             return newAccount;
         }
-   
+
+        private static void PrintWelcomeScreen()
+        {
+            Console.WriteLine("Welcome to SupportBank!");
+            Console.WriteLine("=======================");
+            Console.WriteLine();
+            Console.WriteLine("Commands:");
+            Console.WriteLine("  List All - list all account balances");
+            Console.WriteLine("  List [Account] - list all transactions for the specified account");
+            Console.WriteLine();
+        }
+
+        private static Command PromptForCommand()
+        {
+            while (true)
+            {
+                Console.Write("Enter a command: ");
+                string commandText = Console.ReadLine();
+
+                Command command;
+
+                if (ParseCommand(commandText, out command))
+                {
+                    return command;
+                }
+
+                Console.WriteLine("Sorry, I don't understand.");
+                Console.WriteLine();
+            }
+        }
+
+        private static bool ParseCommand(string commandText, out Command command)
+        {
+            command = new Command();
+
+            if (!commandText.ToLower().StartsWith("list "))
+            {
+                return false;
+            }
+
+            if (commandText.Substring(5).ToLower() == "all")
+            {
+                command.Type = CommandType.ListAll;
+            }
+            else
+            {
+                command.Type = CommandType.ListOne;
+                command.Account = commandText.Substring(5);
+            }
+
+            return true;
+        }
+
         private static void ListAllAccounts(Dictionary<string, Account> accounts)
         {
             foreach (var account in accounts.Values)
@@ -70,6 +146,25 @@ namespace SupportBank
                                 account.Name,
                                 (netBalance < 0 ? "owes" : "is owed"),
                                 $"{Math.Abs(netBalance):C}");
+            }
+
+            Console.WriteLine();
+        }
+
+        private static void ListOneAccount(Account account)
+        {
+            var allTransactions = account.OutgoingTransactions.Union(account.IncomingTransactions);
+            int colWidth = allTransactions.Max(x => x.Narrative.Length) + 3;
+            string colFormat = $"{{0,-15}} {{1,-{colWidth}}} {{2,-15}} {{3,10}}";
+
+            Console.WriteLine($"Account: {account.Name}");
+            foreach (var transaction in allTransactions.OrderBy(tr => tr.Date))
+            {
+                Console.WriteLine(colFormat,
+                                transaction.Date.ToShortDateString(),
+                                transaction.Narrative,
+                                transaction.To,
+                                $"£{String.Format("{0:0.00}", transaction.Amount)}");
             }
 
             Console.WriteLine();
