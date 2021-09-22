@@ -2,6 +2,9 @@
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
 
 namespace SupportBank
 {
@@ -19,9 +22,17 @@ namespace SupportBank
             public string Account { get; set; }
         }
 
+        private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+        
         static void Main()
         {
-            var transactions = ReadCsvFile(@"Transactions2014.csv");
+            var config = new LoggingConfiguration();
+            var target = new FileTarget { FileName = @"C:\Users\EmiPat\Code\TechSwitch teaching\SupportBank\SupportBank.log", Layout = @"${longdate} ${level} - ${logger}: ${message}" };
+            config.AddTarget("File Logger", target);
+            config.LoggingRules.Add(new LoggingRule("*", LogLevel.Debug, target));
+            LogManager.Configuration = config;
+
+            var transactions = ReadCsvFile(@"DodgyTransactions2015.csv");
             var accounts = CreateAccountsFromTransactions(transactions);
 
             PrintWelcomeScreen();
@@ -41,21 +52,49 @@ namespace SupportBank
 
         private static IEnumerable<Transaction> ReadCsvFile(string filename)
         {
+            Logger.Info($"Loading transactions from file {filename}");
             var lines = File.ReadAllLines(filename).Skip(1);
 
             foreach (var line in lines)
             {
+                Logger.Debug($"Parsing transaction: {line}");
                 var fields = line.Split(',');
+
+                if (fields.Length != 5)
+                {
+                    ReportSkippedTransaction(line, "Wrong number of fields");
+                    continue;
+                }
+
+                DateTime date;
+                if (!DateTime.TryParse(fields[0], out date))
+                {
+                    ReportSkippedTransaction(line, "Invalid date");
+                    continue;
+                }
+
+                decimal amount;
+                if (!decimal.TryParse(fields[4], out amount))
+                {
+                    ReportSkippedTransaction(line, "Invalid transaction amount");
+                    continue;
+                }
 
                 yield return new Transaction
                 {
-                    Date = DateTime.Parse(fields[0]),
+                    Date = date,
                     From = fields[1],
                     To = fields[2],
                     Narrative = fields[3],
-                    Amount = decimal.Parse(fields[4])
+                    Amount = amount
                 };
             }
+        }
+
+        private static void ReportSkippedTransaction(string transaction, string reason)
+        {
+            Logger.Error($"Unable to process transaction because {reason}: {transaction}");
+            Console.Error.WriteLine($"Skipping invalid transaction: {transaction}");
         }
 
         private static Dictionary<string, Account> CreateAccountsFromTransactions(IEnumerable<Transaction> transactions)
